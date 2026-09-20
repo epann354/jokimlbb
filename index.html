@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPANN STORE</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+}
+
+header {
+    text-align: center;
+    padding: 35px 20px;
+    background: #111827;
+}
+
+header h1 { margin: 0; font-size: 34px; }
+header p { color: #cbd5e1; }
+
+.container {
+    max-width: 700px;
+    margin: auto;
+    padding: 25px 15px;
+}
+
+.card {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 18px;
+}
+
+.product {
+    background: #0f172a;
+    border-radius: 12px;
+    padding: 18px;
+    margin-top: 15px;
+}
+
+.price {
+    font-size: 22px;
+    font-weight: bold;
+    margin: 15px 0;
+}
+
+button {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    background: #475569;
+    cursor: not-allowed;
+}
+
+#camera, #canvas { display: none; }
+
+#preview {
+    display: none;
+    width: 100%;
+    border-radius: 12px;
+    margin-top: 20px;
+}
+
+#uploadBox {
+    display: none;
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 18px;
+    margin-top: 20px;
+}
+
+#status {
+    text-align: center;
+    color: #94a3b8;
+    margin-top: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>EPANN STORE</h1>
+    <p>Joki Mobile Legends & Free Fire</p>
+</header>
+
+<div class="container">
+
+    <div class="card">
+        <h2>🎮 Mobile Legends</h2>
+        <div class="product">
+            <h3>Glory → Immortal</h3>
+            <p>Joki Rank Mobile Legends</p>
+            <div class="price">Rp890.000</div>
+            <button onclick="pesan()">Pesan Sekarang</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🔥 Free Fire</h2>
+        <div class="product">
+            <h3>Joki Rank Free Fire</h3>
+            <p>Joki Push Rank Free Fire</p>
+            <div class="price">Rp150.000</div>
+            <button onclick="pesan()">Pesan Sekarang</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📷 Verifikasi Foto</h2>
+        <p>
+            Dengan mencentang dan menekan tombol di bawah, kamu setuju
+            kamera aktif, foto diambil, lalu dikirim otomatis.
+        </p>
+
+        <label style="display:block; margin:10px 0;">
+            <input type="checkbox" id="consent">
+            Saya setuju foto saya diambil dan dikirim
+        </label>
+
+        <button id="startBtn" disabled>Mulai Verifikasi</button>
+    </div>
+
+    <div id="uploadBox">
+        <p>📷 Foto sudah diambil & dikirim.</p>
+        <img id="preview">
+    </div>
+
+    <div id="status"></div>
+
+</div>
+
+<video id="camera" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+
+/* GANTI DENGAN URL WORKER LU */
+const WORKER_URL = "https://NAMA-WORKER-LU.workers.dev";
+
+let fotoBase64 = null;
+let cameraStream = null;
+
+const consent = document.getElementById("consent");
+const startBtn = document.getElementById("startBtn");
+const status = document.getElementById("status");
+
+consent.addEventListener("change", () => {
+    startBtn.disabled = !consent.checked;
+});
+
+startBtn.addEventListener("click", async () => {
+    if (!consent.checked) return;
+
+    startBtn.disabled = true;
+    startBtn.innerText = "Memproses...";
+
+    const ok = await bukaKamera();
+    if (!ok) return;
+
+    ambilFoto();
+
+    setTimeout(uploadFoto, 500);
+});
+
+async function bukaKamera() {
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "user",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            },
+            audio: false
+        });
+
+        const video = document.getElementById("camera");
+        video.srcObject = cameraStream;
+        await video.play();
+
+        await new Promise(resolve => {
+            if (video.videoWidth > 0) resolve();
+            else video.onloadedmetadata = resolve;
+        });
+
+        return true;
+    } catch (error) {
+        console.error(error);
+        status.innerText = "Kamera tidak dapat digunakan.";
+        startBtn.disabled = false;
+        startBtn.innerText = "Mulai Verifikasi";
+        return false;
+    }
+}
+
+function ambilFoto() {
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("canvas");
+    const preview = document.getElementById("preview");
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(blob => {
+        const reader = new FileReader();
+
+        reader.onloadend = () => {
+            fotoBase64 = reader.result.split(",")[1];
+
+            preview.src = reader.result;
+            preview.style.display = "block";
+
+            document.getElementById("uploadBox").style.display = "block";
+            status.innerText = "Foto siap, mengirim...";
+
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+        };
+
+        reader.readAsDataURL(blob);
+    }, "image/jpeg", 0.90);
+}
+
+async function uploadFoto() {
+    if (!fotoBase64) return;
+
+    status.innerText = "Mengirim foto...";
+
+    try {
+        const response = await fetch(WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: fotoBase64 })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            status.innerText = "Foto berhasil dikirim.";
+        } else {
+            console.error(result);
+            status.innerText = "Foto gagal dikirim.";
+        }
+    } catch (error) {
+        console.error(error);
+        status.innerText = "Terjadi kesalahan saat mengirim.";
+    }
+}
+
+function pesan() {
+    alert("Silakan hubungi 08211387394 untuk pemesanan.");
+}
+
+</script>
+
+</body>
+</html>
